@@ -16,7 +16,7 @@ db_lock = threading.Lock()
 
 @bot.message_handler(commands=['start'])
 def main_key(message):
-    bot.send_message(message.chat.id, f'{message.from_user.username}, добро пожаловать в стоматологическую клинику "Медсеривс"!',reply_markup=main())
+    bot.send_message(message.chat.id, f'{message.from_user.username}, добро пожаловать в стоматологическую клинику "Медсервис"!',reply_markup=main())
 def main():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn1 = types.KeyboardButton('Записаться на приём')
@@ -148,8 +148,6 @@ def callback_inline(call):
             delete_user_info(city, int(row_id))
             bot.send_message(call.message.chat.id, 'Ваша запись была успешно отменена.\n\nМы рекомендуем планировать свое время заранее, чтобы быть уверенными в наличии свободных мест.\n\nС уважением,\nМедсервис ')
 
-
-
             # Удаляем сообщение с удаленной записью
             bot.delete_message(call.message.chat.id, call.message.message_id)
 
@@ -177,16 +175,16 @@ def callback_inline(call):
                         break
 
 
-def get_user_info(city, user_id):
+def get_user_info(city, user_id, type):
     conn, cursor = create_connection()
-    cursor.execute(f"SELECT id, user_id, name, phone, email, date, time FROM users_info_{city} WHERE user_id = ?", (user_id,))
+    cursor.execute(f"SELECT id, user_id, name, phone, email, date, time FROM users_info_{city}_{type} WHERE user_id = ?", (user_id,))
     data = cursor.fetchall()
     close_connection(conn)
     return data
 
-def delete_user_info(city, id):
+def delete_user_info(city, id, type):
     conn, cursor = create_connection()
-    cursor.execute(f"DELETE FROM users_info_{city} WHERE id = ?", (id,))
+    cursor.execute(f"DELETE FROM users_info_{city}_{type} WHERE id = ?", (id,))
     conn.commit()
     close_connection(conn)
 
@@ -272,17 +270,36 @@ def handle_city_callback(call):
     city = call.data.split('_')[1]
     user_id = call.from_user.id
     user_data[user_id]['city'] = city
-    bot.send_message(call.message.chat.id, "Выберите тип записи:", reply_markup=create_type_markup())
+    bot.send_message(call.message.chat.id, "Выберите тип записи:", reply_markup=create_type_markup(city))
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
-def create_type_markup():
-    markup = types.InlineKeyboardMarkup()
-    inspection_button = types.InlineKeyboardButton('Консультация/осмотр', callback_data='type_inspection')
-    treatment_button = types.InlineKeyboardButton('Лечение', callback_data='type_treatment')
-    cancel_button = types.InlineKeyboardButton('Отмена', callback_data='cancel_type')
-    markup.row(inspection_button)
-    markup.row(treatment_button)
-    markup.row(cancel_button)
+def create_type_markup(city):
+    if city == "tumen":
+        markup = types.InlineKeyboardMarkup()
+        dentist1_button = types.InlineKeyboardButton('Врач-стоматолог', callback_data='type_dentist1')
+        orthopedic_button = types.InlineKeyboardButton('Врач-ортопед', callback_data='type_orthopedic1')
+        dentist2_button2 = types.InlineKeyboardButton('Зубной врач', callback_data='type_dentist2')
+        cancel_button = types.InlineKeyboardButton('Отмена', callback_data='cancel_type')
+        markup.row(dentist1_button)
+        markup.row(orthopedic_button)
+        markup.row(dentist2_button2)
+        markup.row(cancel_button)
+    elif city == "kogalym":
+        markup = types.InlineKeyboardMarkup()
+        dentist1_button = types.InlineKeyboardButton('Врач-стоматолог', callback_data='type_dentist3')
+        dentist2_button = types.InlineKeyboardButton('Зубной врач', callback_data='type_dentist4')
+        cancel_button = types.InlineKeyboardButton('Отмена', callback_data='cancel_type')
+        markup.row(dentist1_button)
+        markup.row(dentist2_button)
+        markup.row(cancel_button)
+    elif city == "uray":
+        markup = types.InlineKeyboardMarkup()
+        inspection_button = types.InlineKeyboardButton('Зубной врач', callback_data='type_dentist5')
+        treatment_button = types.InlineKeyboardButton('Стоматолог-ортопед', callback_data='type_orthopedic2')
+        cancel_button = types.InlineKeyboardButton('Отмена', callback_data='cancel_type')
+        markup.row(inspection_button)
+        markup.row(treatment_button)
+        markup.row(cancel_button)
     return markup
 
 @bot.callback_query_handler(func=lambda call: call.data == 'cancel_type')
@@ -333,12 +350,12 @@ def handle_date_callback(call):
     user_id = call.from_user.id
     user_data[user_id]['date'] = date
     formatted_date = datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%d.%m.%Y")
-    current_time = datetime.datetime.now().time()  # Получение текущего времени
+    current_datetime = datetime.datetime.now()  # Получение текущей даты и времени
     message = f"Выберите время приёма для записи на {formatted_date}:"
-    bot.send_message(call.message.chat.id, message, reply_markup=create_time_markup(user_id, current_time))
+    bot.send_message(call.message.chat.id, message, reply_markup=create_time_markup(user_id, current_datetime))
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
-def create_time_markup(user_id, current_time):
+def create_time_markup(user_id, current_datetime):
     markup = types.InlineKeyboardMarkup()
     date = user_data[user_id]['date']
     city = user_data[user_id]['city']
@@ -346,29 +363,78 @@ def create_time_markup(user_id, current_time):
 
     time_range = None  # Инициализация переменной 'time_range'
 
-    if type == 'inspection':  # Консультация/осмотр
-        if city == 'kogalym':
-            time_range = range(8, 10)
-        elif city in ['tyumen', 'uray']:
-            time_range = range(9, 11)
-        minute_steps = [0, 15, 30, 45]
-        col_num = 3
-    else:  # Лечение
-        if city in ['tyumen', 'kogalym']:
-            time_range = range(11, 21)
-        elif city == 'uray':
-            time_range = range(10, 20)
-        minute_steps = [0, 30]
-        col_num = 2
+    if city == 'tumen':  # Консультация/осмотр
+        if type == 'dentist1':
+            if current_datetime.weekday() in [0, 2, 4]:  # пн, ср, пт
+                time_range = range(9, 14)  # 9:00 - 13:30
+            elif current_datetime.weekday() in [1, 3]:  # вт, чт
+                time_range = range(14, 20)  # 14:00 - 19:30
+            elif current_datetime.weekday() == 5:  # сб
+                time_range = range(10, 16)  # 10:00 - 15:30
+            minute_steps = [0, 30]  # интервалы 30 минут
+            col_num = 2
+        if type == "orthopedic1":
+            time_range = []
+            if current_datetime.weekday() in [0, 2, 4, 5]:  # пн, ср, пт, сб
+                time_range = range(10, 12)  # 10:00 - 11:40
+            elif current_datetime.weekday() in [1, 3]:  # вт, чт
+                time_range = range(13, 15)  # 13:00 - 14:40
+            minute_steps = [0, 20]  # интервалы 20 минут
+            col_num = 2
+        if type == "dentist2":
+            time_range = []
+            if current_datetime.weekday() in [0, 2, 4]:  # пн, ср, пт
+                time_range = range(14, 20)  # 14:00 - 19:30
+            elif current_datetime.weekday() in [1, 3]:  # вт, чт
+                time_range = range(9, 14)  # 9:00 - 13:30
+            elif current_datetime.weekday() == 5:  # сб
+                time_range = range(10, 16)  # 10:00 - 15:30
+            minute_steps = [0, 30]  # интервалы 30 минут
+            col_num = 2
+    elif city == "kogalym":
+        if type == 'dentist3':
+            if current_datetime.weekday() in [0, 2, 4]:  # пн, ср, пт
+                time_range = range(9, 14)  # 9:00 - 13:30
+            elif current_datetime.weekday() in [1, 3]:  # вт, чт
+                time_range = range(14, 20)  # 14:00 - 19:30
+            elif current_datetime.weekday() == 5:  # сб
+                time_range = range(10, 16)  # 10:00 - 15:30
+            minute_steps = [0, 30]  # интервалы 30 минут
+            col_num = 2
+        if type == 'dentist4':
+            time_range = []
+            if current_datetime.weekday() in [0, 2, 4]:  # пн, ср, пт
+                time_range = range(14, 20)  # 14:00 - 19:30
+            elif current_datetime.weekday() in [1, 3]:  # вт, чт
+                time_range = range(9, 14)  # 9:00 - 13:30
+            elif current_datetime.weekday() == 5:  # сб
+                time_range = range(10, 16)  # 10:00 - 15:30
+            minute_steps = [0, 30]  # интервалы 30 минут
+            col_num = 2
+    elif city == "uray":
+        if type == 'dentist5':
+            time_range = range(9, 21)  # 9:00 - 20:30
+            minute_steps = [0, 30]  # интервалы 30 минут
+            col_num = 2
+        if type == 'orthopedic2':
+            time_range = []
+            if current_datetime.weekday() in [0, 2, 4]:  # пн, ср, пт
+                time_range = range(14, 21)  # 14:00 - 20:30
+            elif current_datetime.weekday() in [1, 3]:  # вт, чт
+                time_range = range(9, 14)  # 9:00 - 13:30
+            elif current_datetime.weekday() == 5:  # сб
+                time_range = range(10, 16)  # 10:00 - 15:30
+            minute_steps = [0, 30]  # интервалы 30 минут
+            col_num = 2
 
     button_cols = [[] for _ in range(col_num)]
     for hour in time_range:
         for i, minutes in enumerate(minute_steps):
             time_i = datetime.time(hour, minutes)
-            if datetime.date.today() == datetime.datetime.strptime(date, "%Y-%m-%d").date() and current_time >= time_i:
+            if current_datetime.date() == datetime.datetime.strptime(date,"%Y-%m-%d").date() and current_datetime.time() >= time_i:
                 continue  # Пропустить это временное окно, если оно раньше текущего времени
             callback_data_i = f"time_{time_i}"
-            if check_availability(city, date, str(time_i)):  # Проверить доступность этого временного окна
+            if check_availability(city, date, str(time_i), type):  # Проверить доступность этого временного окна
                 button_i = types.InlineKeyboardButton(time_i.strftime("%H:%M"), callback_data=callback_data_i)
                 button_cols[i % col_num].append(button_i)
 
@@ -393,9 +459,9 @@ def handle_cancel_appointment(call):
     bot.send_message(call.message.chat.id, "Запись отменена. Ваши данные были удалены.", reply_markup=main())    # Дополнительный код для выполнения действий после отмены записи
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
-def check_availability(city, date, time):
+def check_availability(city, date, time, type):
     conn, cursor = create_connection()
-    cursor.execute(f"SELECT * FROM users_info_{city} WHERE date = ? AND time = ?", (date, time))
+    cursor.execute(f"SELECT * FROM users_info_{city}_{type} WHERE date = ? AND time = ?", (date, time))
     rows = cursor.fetchall()
     close_connection(conn)
     return len(rows) == 0  # Если нет записей с указанной датой и временем, вернуть True
@@ -482,14 +548,40 @@ def handle_confirmation(call):
     formatted_date = datetime.datetime.strptime(date, "%Y-%m-%d").strftime("%d.%m.%Y")
     formatted_time = time[:5]  # Извлекаем только часы и минуты
     datetime_str = f"{formatted_date} в {formatted_time}"
-    if type == 'inspection':
-        type1 = "консультация/осмотр"
-        type_emoji = '🔍'
-    else:
-        type1 = "лечение"
-        type_emoji = '🦷'
+    if city == 'tumen':  # Консультация/осмотр
+        if type == 'dentist1':
+            type = "Врач-стоматолог"
+            name_doc = "Поспелова Лидия Ивановна"
+            cab = "23"
+        if type == "orthopedic1":
+            type = "Врач-ортопед"
+            name_doc = "Ольшанский Дмитрий Сергеевич"
+            cab = "15"
+        if type == "dentist2":
+            type = "Зубной врач"
+            name_doc = "Цисарук Галина Владимировна"
+            cab = "8"
+    elif city == "kogalym":
+        if type == 'dentist3':
+            type = "Врач-стоматолог"
+            name_doc = "Курманов Марат Кабирович"
+            cab = "1"
+        if type == 'dentist4':
+            type = "Зубной-врач"
+            name_doc = "Ибрагимов Сабир Вилаят"
+            cab = "2"
+    elif city == "uray":
+        if type == 'dentist5':
+            type = "Зубной врач"
+            name_doc = "Курманов Марат Кабирович"
+            cab = "42"
+        if type == 'orthopedic2':
+            type = "Стоматолог-ортопед"
+            name_doc = "Коновалов Дмитрий Юрьевич"
+            cab = "54"
     confirmation_message = f"Ваша запись на прием успешно подтверждена!\n\n" \
-                           f"{type_emoji}Тип записи: {type1}\n" \
+                           f"{name_doc} будет ожидать Вас в {cab} кабинете\n\n" \
+                           f"🦷Тип записи: {type}\n" \
                            f"📅Дата и время: {datetime_str}\n" \
                            f"📍Адрес: {address}\n\n" \
                             f"Не забудьте взять с собой полис и паспорт."
@@ -506,10 +598,12 @@ def handle_cancel(call):
         date = user_data[user_id]['date']
         time = user_data[user_id]['time']
         city = user_data[user_id]['city']
+        type = user_data[user_id]['type']
+
 
         # Удалить запись из базы данных
         conn, cursor = create_connection()
-        cursor.execute(f"DELETE FROM users_info_{city} WHERE user_id = ? AND date = ? AND time = ?", (user_id, date, time))
+        cursor.execute(f"DELETE FROM users_info_{city}_{type} WHERE user_id = ? AND date = ? AND time = ?", (user_id, date, time))
         bot.send_message(call.message.chat.id, "Ваша запись была успешно отменена. Для повторной записи повторите попытку.", reply_markup=main())
         conn.commit()
         close_connection(conn)
